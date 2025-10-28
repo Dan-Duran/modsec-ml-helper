@@ -59,6 +59,7 @@ FIXED_TIMESTAMP = pd.Timestamp('1970-01-01', tz='UTC')
 DTYPE = np.float32
 CONFIDENCE_THRESHOLD = 0.95
 TRUNCATE_LENGTH = 700
+PAYLOAD_TRUNCATE_LENGTH = 300
 
 # Colors
 COLOR_RED = "\033[91m"
@@ -406,13 +407,29 @@ def main():
             max_prob = float(np.max(prob_vector_calibrated))
             X_row = X_all.getrow(i)
 
-            uri_str = str(df.iloc[i].get('uri', 'N/A'))
-            query_str = str(df.iloc[i].get('uri_query', ''))
-            uri_path_str = str(df.iloc[i].get('uri_path', 'N/A'))
-            ua_str = str(df.iloc[i].get('user_agent', 'N/A'))
-            payload_str = str(df.iloc[i].get('payload', 'N/A'))
-            rules_str = str(df.iloc[i].get('triggered_rule_ids', '[]'))
-            severity_str = str(df.iloc[i].get('rule_severities', '[]'))
+# --- Extract More Fields ---
+            row_data = df.iloc[i]
+            method_str = str(row_data.get('method', 'N/A'))
+            uri_str = str(row_data.get('uri', 'N/A')) # Base URI (path only, from parser)
+            query_str = str(row_data.get('uri_query', ''))
+            # Construct the *actual* full request path + query
+            full_request_path = uri_str + ('?' + query_str if query_str else '')
+
+            # Keep uri_path_str separate if needed later for contributions
+            uri_path_str = str(row_data.get('uri_path', 'N/A'))
+
+            ua_str = str(row_data.get('user_agent', 'N/A'))
+            # Handle potential NaN from pandas for referer before converting to string
+            referer_val = row_data.get('referer')
+            referer_str = str(referer_val) if pd.notna(referer_val) else 'N/A'
+
+            # Handle potential NaN from pandas for payload before converting to string
+            payload_val = row_data.get('payload')
+            payload_str = str(payload_val) if pd.notna(payload_val) else 'N/A'
+
+            rules_str = str(row_data.get('triggered_rule_ids', '[]'))
+            severity_str = str(row_data.get('rule_severities', '[]'))
+            # --- End Extract ---
 
             prob_dict_float = {c: float(p) for c, p in zip(classes_calibrated, prob_vector_calibrated)}
             prob_dict_str = {c: f"{p:.4f}" for c, p in prob_dict_float.items()}
@@ -439,12 +456,25 @@ def main():
 
             insights_log = []
             console_lines: List[str] = []
-            full_request = uri_str + ('?' + query_str if query_str else '')
 
             if should_print:
                 console_lines.append("\n" + "-" * 70)
-                console_lines.append(f"ENTRY #{i+1} | URI: {uri_str[:TRUNCATE_LENGTH]}")
-                console_lines.append(f"ENTRY #{i+1} | Request: {full_request[:TRUNCATE_LENGTH]}")
+                # --- NEW Enhanced Output ---
+                # ** Display Method + Full Path + Query **
+                console_lines.append(f"ENTRY #{i+1} | {method_str} {full_request_path[:TRUNCATE_LENGTH]}")
+
+                # Display Referer only if it exists and isn't empty/NaN
+                if referer_str and referer_str != 'N/A' and referer_str.strip():
+                    console_lines.append(f"  Referer:     {referer_str[:TRUNCATE_LENGTH]}")
+                # Display User-Agent only if it exists and isn't empty/NaN
+                if ua_str and ua_str != 'N/A' and ua_str.strip():
+                    console_lines.append(f"  User-Agent:  {ua_str[:TRUNCATE_LENGTH]}")
+                # Display Payload only if it exists and isn't empty/NaN
+                if payload_str and payload_str != 'N/A' and payload_str.strip():
+                    # Apply specific payload truncation
+                    payload_display = payload_str[:PAYLOAD_TRUNCATE_LENGTH] + ('...' if len(payload_str) > PAYLOAD_TRUNCATE_LENGTH else '')
+                    console_lines.append(f"  Payload:     {payload_display}")
+                # --- End Enhanced Output ---
                 console_lines.append(f"  VERDICT:     {verdict_color}{pred.upper()}{COLOR_RESET}")
                 console_lines.append(f"  PROBABILITY: {prob_log_str}")
                 console_lines.append(f"  {action}")
