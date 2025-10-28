@@ -26,6 +26,10 @@ Usage (filtered console output):
         --filtered
 """
 
+import os
+import requests
+from dotenv import load_dotenv
+
 import argparse
 import logging
 import sys
@@ -66,6 +70,103 @@ COLOR_RED = "\033[91m"
 COLOR_YELLOW = "\033[93m"
 COLOR_ORANGE = "\033[38;5;208m"
 COLOR_RESET = "\033[0m"
+
+# ================== MS GRAPH EMAIL FUNCTIONS ==================
+def get_ms_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
+    """Get OAuth token for MS Graph API using client credentials."""
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    token_data = {
+        'grant_type': 'client_credentials',
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'scope': 'https://graph.microsoft.com/.default'
+    }
+    
+    try:
+        response = requests.post(token_url, data=token_data, timeout=10)
+        response.raise_for_status()
+        return response.json()['access_token']
+    except Exception as e:
+        log.error(f"Failed to get MS Graph token: {e}")
+        return None
+
+def send_alert_email(access_token: str, from_user: str, entry_data: dict) -> bool:
+    """Send alert email via MS Graph API."""
+    send_mail_url = f"https://graph.microsoft.com/v1.0/users/{from_user}/sendMail"
+    
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    
+    # Build email content
+    verdict = entry_data['verdict']
+    prob_str = entry_data['prob_str']
+    method = entry_data['method']
+    uri = entry_data['uri']
+    entry_num = entry_data['entry_num']
+    insights = entry_data.get('insights', [])
+    
+    # Set priority based on verdict
+    importance = 'high' if verdict == 'malicious' else 'normal'
+    
+    # Build HTML body
+    html_body = f"""
+    <html>
+    <body style="font-family: 'Courier New', monospace;">
+        <h2 style="color: {'#d9534f' if verdict == 'malicious' else '#f0ad4e' if verdict == 'suspicious' else '#5cb85c'};">
+            ModSec ML Bot Alert: {verdict.upper()}
+        </h2>
+        <hr>
+        <p><strong>Entry:</strong> #{entry_num}</p>
+        <p><strong>Method:</strong> {method}</p>
+        <p><strong>URI:</strong> {uri}</p>
+        <p><strong>Probability:</strong> {prob_str}</p>
+        <hr>
+        <h3>Analysis Details:</h3>
+        <pre style="background-color: #f5f5f5; padding: 10px; border-left: 3px solid #{'d9534f' if verdict == 'malicious' else 'f0ad4e'};">
+"""
+    
+    for insight in insights:
+        html_body += f"{insight}\n"
+    
+    html_body += """
+        </pre>
+        <hr>
+        <p style="color: #666; font-size: 12px;">
+            This is an automated alert from ML ModSec Analyst. Investigate and escalate as necessary.
+        </p>
+    </body>
+    </html>
+    """
+    
+    # Build email message
+    email_message = {
+        'message': {
+            'subject': f'[{verdict.upper()}] - Client: DEMO CLIENT -ModSec ML Bot Alert',
+            'importance': importance,
+            'body': {
+                'contentType': 'HTML',
+                'content': html_body
+            },
+            'toRecipients': [
+                {
+                    'emailAddress': {
+                        'address': from_user  # Send to same mailbox for demo
+                    }
+                }
+            ]
+        },
+        'saveToSentItems': 'true'
+    }
+    
+    try:
+        response = requests.post(send_mail_url, headers=headers, json=email_message, timeout=10)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        log.error(f"Failed to send email for entry #{entry_num}: {e}")
+        return False
 
 # ================== FEATURE FUNCTIONS (INFERENCE) ==================
 def _safe_str_ops(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
@@ -338,6 +439,8 @@ def main():
     # added ELK log file argument
     parser.add_argument('--elk-log-file', type=Path, default=None,
                         help='Optional: Path to write clean, multi-line analysis output specifically for ELK/Filebeat ingestion.')
+    # added MS Graph email alerting arguments
+    parser.add_argument('--send-alert', action='store_true', help='Send email alerts via MS Graph for malicious/suspicious verdicts.')
     
     args = parser.parse_args()
 
@@ -368,6 +471,29 @@ def main():
             elk_log = None # Disable ELK logging if setup fails
    
     # --- END ELK LOGGER SETUP ---
+
+    # Load MS Graph credentials if --send-alert is enabled
+    ms_graph_token = None
+    ms_imap_user = None
+    if args.send_alert:
+        log.info("Loading MS Graph credentials from .env file...")
+        load_dotenv()
+        tenant_id = os.getenv('MS_OAUTH_TENANT_ID')
+        client_id = os.getenv('MS_OAUTH_CLIENT_ID')
+        client_secret = os.getenv('MS_OAUTH_CLIENT_SECRET')
+        ms_imap_user = os.getenv('MS_IMAP_USER')
+        
+        if not all([tenant_id, client_id, client_secret, ms_imap_user]):
+            log.error("Missing MS Graph credentials in .env file. Alerts disabled.")
+            args.send_alert = False
+        else:
+            ms_graph_token = get_ms_graph_token(tenant_id, client_id, client_secret)
+            if not ms_graph_token:
+                log.error("Failed to authenticate with MS Graph. Alerts disabled.")
+                args.send_alert = False
+            else:
+                log.info(f"✓ MS Graph authenticated successfully for {ms_imap_user}")
+    # --- END MS GRAPH SETUP ---
 
     if not args.csv_file.exists():
         log.error(f"CSV file not found: {args.csv_file}"); sys.exit(1)
@@ -601,6 +727,21 @@ def main():
                          log.info(line)
                 for line in insights_lines:
                     log.info(line)
+
+            # --- Send Email Alert (if enabled) ---
+            if args.send_alert and ms_graph_token and pred in ['malicious', 'suspicious']:
+                alert_data = {
+                    'entry_num': i + 1,
+                    'verdict': pred,
+                    'method': method_str,
+                    'uri': full_request_path,
+                    'prob_str': prob_log_str,
+                    'insights': [line.strip() for line in insights_lines if line.strip() and not line.strip().startswith('---')]
+                }
+                if send_alert_email(ms_graph_token, ms_imap_user, alert_data):
+                    log.info(f"  ✓ Alert email sent for entry #{i+1}")
+                else:
+                    log.warning(f"  ✗ Failed to send alert email for entry #{i+1}")
 
             # --- Always write ALL rows to CSV summary ---
             csv_row = {
