@@ -1,4 +1,7 @@
-# PIPELINE COMMANDS
+
+# Interim readme
+
+## Pipeline commands
 
 ## PARSER:
 python parser.py --input modsec-logs/modsec.log* --output datasets/modsec_dataset.csv
