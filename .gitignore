@@ -31,3 +31,6 @@ dist/
 # Virtual envs
 venv/
 .env/
+
+# Others
+README-old.md
