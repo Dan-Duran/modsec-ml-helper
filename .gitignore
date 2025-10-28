@@ -1,0 +1,33 @@
+# Ignore folders
+SecLists/
+apache-logs/
+assets/
+backups/
+calibration_plots/
+datasets/
+features_production/
+features_test/
+helpers/
+models/
+modsec-logs/
+modsec-rules/
+test-logs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyd
+*.pkl
+*.pickle
+
+# Python build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual envs
+venv/
+.env/
