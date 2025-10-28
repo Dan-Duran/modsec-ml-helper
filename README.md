@@ -14,10 +14,10 @@ This project implements a **four-stage pipeline**: Parsing -> Feature Engineerin
 * `calibrate_model.py`: Takes the uncalibrated model from `train_supervised_model.py` and the validation set features. Applies **Platt scaling** (`CalibratedClassifierCV`) to adjust the model's probability outputs, making them reliable. Saves the final, **calibrated** model.
 * `ml_test.py`: Evaluates a trained (and ideally calibrated) model against a pre-parsed CSV test set, generating classification reports, accuracy metrics, and optional risk score distribution plots.
 * `synthetic_benign_logs.py`: Script to generate synthetic log data representing benign/normal web traffic.
-* `synthetic_malicious_logs.py`: Script to generate synthetic log data representing malicious web traffic, likely using SecLists for realistic patterns.
-* `synthetic_suspicious_logs.py`: Script to generate synthetic log data representing suspicious web traffic, likely using SecLists randomization to create ambiguous/edge cases.
+* `synthetic_malicious_logs.py`: Script to generate synthetic log data representing malicious web traffic, using SecLists for realistic patterns.
+* `synthetic_suspicious_logs.py`: Script to generate synthetic log data representing suspicious web traffic, using SecLists randomization to create ambiguous/edge cases.
 * `plot_pr_curves.py`: Utility script to generate Precision-Recall curves for evaluating model performance, especially useful for imbalanced datasets.
-* `filter_modsecurity.py`: Utility script likely used for filtering or selecting specific ModSecurity rules or logs based on certain criteria.
+* `filter_modsecurity.py`: Utility script used for filtering specific ModSecurity logs based on `normal`, `suspicious` or `malicious` criteria.
 
 ### **Disclaimer**
 
