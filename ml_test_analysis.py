@@ -335,7 +335,39 @@ def main():
     parser.add_argument('--rules-dir', type=Path, default=None, help='Optional: ModSecurity CRS directory to map rule ids to messages.')
     parser.add_argument('--output-csv', type=Path, default=None, help='Optional: Path to save a detailed CSV report with probabilities.')
     parser.add_argument('--filtered', action='store_true', help='If set, only print split decisions (<95%%) to console (CSV still contains ALL).')
+    # added ELK log file argument
+    parser.add_argument('--elk-log-file', type=Path, default=None,
+                        help='Optional: Path to write clean, multi-line analysis output specifically for ELK/Filebeat ingestion.')
+    
     args = parser.parse_args()
+
+    # --- DEDICATED ELK LOGGER SETUP ---
+    elk_log = None
+    elk_formatter = None
+    continuation_formatter = None
+    if args.elk_log_file:
+        try:
+            args.elk_log_file.parent.mkdir(parents=True, exist_ok=True)
+            elk_log = logging.getLogger('elk_logger')
+            elk_log.setLevel(logging.INFO) # Match the main logger level or set as needed
+
+            # Formatter for the FIRST line of each event (includes timestamp for Filebeat)
+            elk_formatter = logging.Formatter('%(asctime)s [ANALYST] - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+            # Formatter for subsequent lines (message only)
+            continuation_formatter = logging.Formatter('%(message)s')
+
+            file_handler = logging.FileHandler(args.elk_log_file, mode='a') # Use append mode
+            # Set initial formatter (will be changed in the loop)
+            file_handler.setFormatter(elk_formatter)
+
+            elk_log.addHandler(file_handler)
+            elk_log.propagate = False # Prevent duplication to console logger
+            log.info(f"Configured separate logging for ELK to: {args.elk_log_file}")
+        except Exception as e:
+            log.error(f"Failed to configure ELK logger: {e}")
+            elk_log = None # Disable ELK logging if setup fails
+   
+    # --- END ELK LOGGER SETUP ---
 
     if not args.csv_file.exists():
         log.error(f"CSV file not found: {args.csv_file}"); sys.exit(1)
@@ -401,13 +433,14 @@ def main():
 
         results_for_csv = []
 
+
         for i in range(total):
+            # --- Existing data extraction ---
             pred = all_preds_calibrated[i]
             prob_vector_calibrated = all_probs_calibrated[i]
             max_prob = float(np.max(prob_vector_calibrated))
             X_row = X_all.getrow(i)
 
-# --- Extract More Fields ---
             row_data = df.iloc[i]
             method_str = str(row_data.get('method', 'N/A'))
             uri_str = str(row_data.get('uri', 'N/A')) # Base URI (path only, from parser)
@@ -429,7 +462,7 @@ def main():
 
             rules_str = str(row_data.get('triggered_rule_ids', '[]'))
             severity_str = str(row_data.get('rule_severities', '[]'))
-            # --- End Extract ---
+            # --- End Extraction ---
 
             prob_dict_float = {c: float(p) for c, p in zip(classes_calibrated, prob_vector_calibrated)}
             prob_dict_str = {c: f"{p:.4f}" for c, p in prob_dict_float.items()}
@@ -442,6 +475,7 @@ def main():
             }.get(pred, "ACTION: N/A")
 
             verdict_color = ""
+            verdict_text = pred.upper() # Base text without color
             if pred == 'malicious':
                 verdict_color = COLOR_RED if max_prob >= CONFIDENCE_THRESHOLD else COLOR_ORANGE
             elif pred == 'suspicious':
@@ -449,51 +483,38 @@ def main():
             elif pred == 'normal' and max_prob < CONFIDENCE_THRESHOLD:
                 verdict_color = COLOR_YELLOW
 
-            # Console filtering behavior
-            should_print = True
-            if args.filtered and max_prob >= CONFIDENCE_THRESHOLD:
-                should_print = False
+            # --- Build the core analysis lines (WITHOUT color codes initially) ---
+            analysis_lines: List[str] = [] # Use a new list name
+            analysis_lines.append(f"ENTRY #{i+1} | {method_str} {full_request_path[:TRUNCATE_LENGTH]}") # << FIRST LINE
+            if referer_str and referer_str != 'N/A' and referer_str.strip():
+                analysis_lines.append(f"  Referer:     {referer_str[:TRUNCATE_LENGTH]}")
+            if ua_str and ua_str != 'N/A' and ua_str.strip():
+                analysis_lines.append(f"  User-Agent:  {ua_str[:TRUNCATE_LENGTH]}")
+            if payload_str and payload_str != 'N/A' and payload_str.strip():
+                payload_display = payload_str[:PAYLOAD_TRUNCATE_LENGTH] + ('...' if len(payload_str) > PAYLOAD_TRUNCATE_LENGTH else '')
+                analysis_lines.append(f"  Payload:     {payload_display}")
+            analysis_lines.append(f"  VERDICT:     {verdict_text}") # Log verdict text only
+            analysis_lines.append(f"  PROBABILITY: {prob_log_str}")
+            analysis_lines.append(f"  {action}")
 
-            insights_log = []
-            console_lines: List[str] = []
-
-            if should_print:
-                console_lines.append("\n" + "-" * 70)
-                # --- NEW Enhanced Output ---
-                # ** Display Method + Full Path + Query **
-                console_lines.append(f"ENTRY #{i+1} | {method_str} {full_request_path[:TRUNCATE_LENGTH]}")
-
-                # Display Referer only if it exists and isn't empty/NaN
-                if referer_str and referer_str != 'N/A' and referer_str.strip():
-                    console_lines.append(f"  Referer:     {referer_str[:TRUNCATE_LENGTH]}")
-                # Display User-Agent only if it exists and isn't empty/NaN
-                if ua_str and ua_str != 'N/A' and ua_str.strip():
-                    console_lines.append(f"  User-Agent:  {ua_str[:TRUNCATE_LENGTH]}")
-                # Display Payload only if it exists and isn't empty/NaN
-                if payload_str and payload_str != 'N/A' and payload_str.strip():
-                    # Apply specific payload truncation
-                    payload_display = payload_str[:PAYLOAD_TRUNCATE_LENGTH] + ('...' if len(payload_str) > PAYLOAD_TRUNCATE_LENGTH else '')
-                    console_lines.append(f"  Payload:     {payload_display}")
-                # --- End Enhanced Output ---
-                console_lines.append(f"  VERDICT:     {verdict_color}{pred.upper()}{COLOR_RESET}")
-                console_lines.append(f"  PROBABILITY: {prob_log_str}")
-                console_lines.append(f"  {action}")
-
+            # --- Build insights (split decision details) ---
+            insights_lines: List[str] = []
+            insights_log_for_csv = [] # Separate list for CSV insights
             if max_prob < CONFIDENCE_THRESHOLD:
-                if should_print:
-                    console_lines.append(f"  --- Split Decision ({max_prob*100:.1f}% confidence): ---")
-
+                insights_lines.append(f"  --- Split Decision ({max_prob*100:.1f}% confidence): ---")
                 if malicious_idx_original != -1:
                     baseline_prob_original = float(all_probs_original[i][malicious_idx_original])
                     contributions = _run_local_contribution(X_row, model_original, baseline_prob_original, malicious_idx_original, feature_indices)
 
                     if contributions:
                         for group, impact in sorted(contributions.items(), key=lambda item: abs(item[1]), reverse=True):
-                            data_to_show = ""
-                            if group == 'URI': data_to_show = uri_str
+                            # ... (Keep your existing logic to get data_to_show for each group) ...
+                            data_to_show = "" # Placeholder - ensure this gets populated by your logic
+                            if group == 'URI': data_to_show = uri_str # Use base URI here for context
                             elif group == 'URI_Path': data_to_show = uri_path_str
+                            elif group == 'URI_Query': data_to_show = query_str # Use query string here
                             elif group == 'User_Agent': data_to_show = ua_str
-                            elif group == 'Payload': data_to_show = payload_str
+                            elif group == 'Payload': data_to_show = payload_str # Use full payload_str here for context before truncating
                             elif group == 'Severities': data_to_show = severity_str
                             elif group == 'Rule_IDs':
                                 ids = _parse_rule_ids(rules_str)
@@ -518,49 +539,80 @@ def main():
                                         feat_vals = {numerical_feature_names[idx]: num_values[idx] for idx in nz if idx < len(numerical_feature_names)}
                                         top_num = sorted(feat_vals.items(), key=lambda item: abs(item[1]), reverse=True)[:3]
                                         data_to_show = ", ".join([f"{n}({v:.2f})" for n, v in top_num])
-                                    else:
-                                        data_to_show = "(No significant values)"
-                                else:
-                                    data_to_show = "(Numerical slice error)"
-                            else:
-                                data_to_show = f"(Contribution: {impact:+.3f})"
+                                    else: data_to_show = "(No significant values)"
+                                else: data_to_show = "(Numerical slice error)"
+                            else: data_to_show = f"(Contribution: {impact:+.3f})"
 
-                            # Truncate long data
-                            if data_to_show and not data_to_show.startswith("(Contribution") and not data_to_show.startswith("(No significant"):
-                                data_to_show = data_to_show[:TRUNCATE_LENGTH] + ('...' if len(data_to_show) > TRUNCATE_LENGTH else '')
+                            # Truncate long data *for display/logging*
+                            display_data = data_to_show
+                            if display_data and not display_data.startswith("(Contribution") and not display_data.startswith("(No significant"):
+                                display_data = display_data[:TRUNCATE_LENGTH] + ('...' if len(display_data) > TRUNCATE_LENGTH else '')
 
                             direction = "contributed to" if impact > 0 else "lowered"
-                            insight_text = f"'{group}' {direction} Malicious score ({impact:+.3f}): {data_to_show}"
-                            insights_log.append(insight_text)
-                            if should_print:
-                                console_lines.append(f"    - {insight_text}")
+                            insight_text = f"'{group}' {direction} Malicious score ({impact:+.3f}): {display_data}"
+                            insights_lines.append(f"    - {insight_text}") # Indent insights for readability
+                            insights_log_for_csv.append(insight_text) # Store potentially untruncated version for CSV
                     else:
-                        insights_log.append("No single feature group had a dominant impact.")
-                        if should_print:
-                            console_lines.append("    - No single feature group had a dominant impact.")
+                        no_impact_msg = "    - No single feature group had a dominant impact."
+                        insights_lines.append(no_impact_msg)
+                        insights_log_for_csv.append("No single feature group had a dominant impact.")
                 else:
-                    insights_log.append("Contribution analysis skipped (no 'malicious' class).")
-                    if should_print:
-                        console_lines.append("    - Contribution analysis skipped (no 'malicious' class).")
+                    skip_msg = "    - Contribution analysis skipped (no 'malicious' class)."
+                    insights_lines.append(skip_msg)
+                    insights_log_for_csv.append("Contribution analysis skipped (no 'malicious' class).")
             else:
-                insights_log.append(f"Model is {max_prob*100:.1f}% confident.")
-                if should_print:
-                    console_lines.append(f"  - Model is {max_prob*100:.1f}% confident in this verdict.")
+                 confident_msg = f"  - Model is {max_prob*100:.1f}% confident in this verdict."
+                 insights_lines.append(confident_msg)
+                 insights_log_for_csv.append(f"Model is {max_prob*100:.1f}% confident.")
 
-            # Print buffered console lines (respecting filter)
-            if should_print:
-                for line in console_lines:
+
+            # --- Write to ELK Log (if configured) ---
+            if elk_log and elk_formatter and continuation_formatter:
+                try:
+                    # Log the first line with the main formatter (includes timestamp + prefix)
+                    elk_log.handlers[0].setFormatter(elk_formatter)
+                    elk_log.info(analysis_lines[0]) # Log ENTRY # line
+
+                    # Log subsequent lines with continuation formatter (message only)
+                    elk_log.handlers[0].setFormatter(continuation_formatter)
+                    for line in analysis_lines[1:]:
+                        line_no_color = re.sub(r'\x1b\[[0-9;]*[mK]', '', line) # Remove colors
+                        # Indent subsequent lines for ELK readability
+                        elk_log.info(f"  {line_no_color.strip()}")
+                    for line in insights_lines:
+                        line_no_color = re.sub(r'\x1b\[[0-9;]*[mK]', '', line) # Remove colors
+                        elk_log.info(line_no_color) # Insights already have indentation
+                except Exception as e_elk:
+                    log.error(f"Error writing entry #{i+1} to ELK log: {e_elk}")
+
+
+            # --- Write to Console Log (respecting filter) ---
+            should_print_to_console = True
+            if args.filtered and max_prob >= CONFIDENCE_THRESHOLD:
+                should_print_to_console = False
+
+            if should_print_to_console:
+                log.info("\n" + "-" * 70) # Separator for console
+                # Print lines with color codes for console
+                for line_idx, line in enumerate(analysis_lines):
+                    if "VERDICT:" in line: # Add color back to verdict line
+                         log.info(f"  VERDICT:     {verdict_color}{verdict_text}{COLOR_RESET}")
+                    else:
+                         log.info(line)
+                for line in insights_lines:
                     log.info(line)
 
-            # Always write ALL rows to CSV summary
+            # --- Always write ALL rows to CSV summary ---
             csv_row = {
                 'entry': i + 1,
                 'prediction': pred,
-                'uri': uri_str,
+                'uri': full_request_path, # Use full path for CSV
                 **prob_dict_float,
-                'insights': "; ".join(insights_log)
+                'insights': "; ".join(insights_log_for_csv) # Use CSV-specific insights
             }
             results_for_csv.append(csv_row)
+
+        # --- End of loop ---
 
         # Summary
         log.info("\n" + "=" * 70)
