@@ -1,6 +1,4 @@
 
-# Interim readme
-
 ## Pipeline commands
 
 ## PARSER:
