@@ -2,6 +2,14 @@
 
 Machine learning pipeline for ModSecurity WAF log analysis and intelligent alert triage. This system trains a Random Forest classifier on ModSecurity audit logs to provide probabilistic risk scores for alert prioritization.
 
+## Demo Video
+
+Here is a <15-minute presentation on this research project:
+
+[![ML-Based WAF Alert Prioritization Demo](http://img.youtube.com/vi/N4ZzdSp9KX0/0.jpg)](https://youtu.be/N4ZzdSp9KX0)
+
+**Direct link:** https://youtu.be/N4ZzdSp9KX0
+
 ## Prerequisites
 
 - Python 3.10+
