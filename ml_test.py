@@ -18,6 +18,9 @@ Usage:
         --model-path models/rf_baseline_20250930_183356.joblib \
         --transformers-path features_production/transformers.joblib \
         --expected malicious
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 
 import argparse

@@ -592,9 +592,6 @@ def fit_mode(df: pd.DataFrame, config: Dict, args, logger: logging.Logger):
     ua_val = ua_vec.transform(X_val['user_agent'].fillna('')).astype(config['dtype'])
     ua_test = ua_vec.transform(X_test['user_agent'].fillna('')).astype(config['dtype'])
 
-    # =================================================================
-    # --- FIX: ADD THIS ENTIRE BLOCK FOR THE MISSING FEATURES ---
-    # =================================================================
     logger.info("Vectorizing ModSecurity rule and severity features...")
 
     # Cast rule/severity columns to string
@@ -621,9 +618,6 @@ def fit_mode(df: pd.DataFrame, config: Dict, args, logger: logging.Logger):
     severities_train = severities_vec.fit_transform(X_train['rule_severities'].fillna('[]')).astype(config['dtype'])
     severities_val = severities_vec.transform(X_val['rule_severities'].fillna('[]')).astype(config['dtype'])
     severities_test = severities_vec.transform(X_test['rule_severities'].fillna('[]')).astype(config['dtype'])
-    # =================================================================
-    # --- END OF BLOCK TO ADD ---
-    # =================================================================
     
     # Categorical encoding
     logger.info("Encoding categorical features...")
@@ -845,7 +839,6 @@ def transform_mode(df: pd.DataFrame, args, logger: logging.Logger):
     logger.info(f"✓ Format: {features.format}")
     
     return features
-
 
 # ============= CLI =============
 

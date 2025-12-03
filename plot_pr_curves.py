@@ -9,6 +9,9 @@ Usage:
   python plot_pr_curves.py --features_dir features_production \
       --model models/rf_weighted_20250930_175219.joblib \
       --output pr_curves.png
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 
 import argparse

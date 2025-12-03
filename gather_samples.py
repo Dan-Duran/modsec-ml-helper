@@ -5,7 +5,8 @@ This script extracts rows from a CSV file using either:
 - Two-stage sampling: frequency filter then even distribution
 - Stratified sampling: exact counts per class label
 
-Author: Dan Duran
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 import argparse
 import sys

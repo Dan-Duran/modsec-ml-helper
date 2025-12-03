@@ -2,6 +2,9 @@
 """
 Synthetic Benign Apache Log Generator
 Generates realistic benign web traffic logs for ML model testing
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 
 import argparse

@@ -9,6 +9,10 @@ Reads a raw ModSecurity audit log and filters records by classification:
 - NORMAL: Everything else
 
 DEDUPLICATION: Removes duplicate transaction IDs (keeps first occurrence)
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
+
 """
 
 import argparse

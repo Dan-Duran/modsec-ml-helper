@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Synthetic Suspicious Apache Log Generator v3 - Enhanced Variety
+Synthetic Suspicious Apache Random Log Generator
 Uses SecLists wordlists with improved variety for 1M+ log generation
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 
 import argparse
@@ -16,6 +19,7 @@ from ipaddress import IPv4Address
 from random import getrandbits
 
 class SuspiciousLogGenerator:
+    # recommended to download SecLists (https://github.com/danielmiessler/SecLists) and change variable
     def __init__(self, seclists_path='/home/dan/Projects/cs6727/NEW/SecLists'):
         self.faker = Faker()
         self.seclists_base = Path(seclists_path)

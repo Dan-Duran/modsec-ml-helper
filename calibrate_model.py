@@ -528,7 +528,7 @@ def main():
         logger.info(f"  3. When model says 90% confidence, it should be correct ~90% of the time")
         
     except Exception as e:
-        logger.error(f"\n❌ Error during calibration: {e}", exc_info=True)
+        logger.error(f"\n Error during calibration: {e}", exc_info=True)
         sys.exit(1)
 
 

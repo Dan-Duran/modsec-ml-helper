@@ -24,6 +24,9 @@ Usage (filtered console output):
         --rules-dir modsec-rules/coreruleset-4.18.0 \
         --output-csv analysis_report.csv \
         --filtered
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 
 import os

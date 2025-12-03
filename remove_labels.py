@@ -4,6 +4,9 @@ remove_labels.py - Remove ONLY the programmatic label for analyst review
 
 Analysts will see the same WAF metadata (rules, severities, scores) that the model sees.
 They'll make their own expert judgment to compare against both the WAF baseline and model prediction.
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 import pandas as pd
 import sys

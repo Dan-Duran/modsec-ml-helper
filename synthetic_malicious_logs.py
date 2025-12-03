@@ -3,6 +3,9 @@
 Synthetic Malicious Apache Log Generator - Final Comprehensive Edition v2
 Generates diverse, realistic attack patterns across multiple vectors (URI, Headers)
 and includes modern attack types like Log4Shell and SSTI, now with request time.
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 
 import argparse

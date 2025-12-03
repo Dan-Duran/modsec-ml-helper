@@ -5,6 +5,9 @@ train_supervised_model.py - Model Training on Pre-Processed Features
 This script loads pre-processed, numerical feature matrices (e.g., .npz files)
 and trains a classifier. It is designed to be the second step in a two-stage
 ML pipeline, following the execution of feature_engineer.py.
+
+Author: Danilo A. Duran
+Institution: Georgia Institute of Technology
 """
 
 import argparse
