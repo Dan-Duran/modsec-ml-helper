@@ -9,6 +9,7 @@ features_production/
 features_test/
 helpers/
 models/
+logs/
 modsec-logs/
 modsec-rules/
 test-logs/
@@ -35,3 +36,5 @@ venv/
 
 # Others
 README-old.md
+risk_distribution.png
+analysis_report.csv
